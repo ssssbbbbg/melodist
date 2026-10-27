@@ -103,6 +103,36 @@ enum class ScreenSaverBrightness(
     Bright("明亮", 0.85f),
 }
 
+/**
+ * 定时关闭（睡眠定时器）选项，单位为分钟。
+ *
+ * @property minutes 倒计时分钟数，0 表示不启用
+ */
+enum class SleepTimerDuration(
+    val label: String,
+    val minutes: Int,
+) {
+    Off("不启用", 0),
+    Minutes15("15 分钟", 15),
+    Minutes30("30 分钟", 30),
+    Minutes45("45 分钟", 45),
+    Minutes60("60 分钟", 60),
+    Minutes90("90 分钟", 90),
+    ;
+
+    val millis: Long get() = minutes * 60 * 1000L
+}
+
+/**
+ * 定时关闭触发后的行为。
+ */
+enum class SleepTimerAction(
+    val label: String,
+) {
+    PausePlayback("暂停播放"),
+    CloseApp("关闭应用"),
+}
+
 enum class ThemeMode(
     val label: String,
 ) {
@@ -149,6 +179,10 @@ data class AppSettings(
     val screenSaverBrightness: ScreenSaverBrightness = ScreenSaverBrightness.Auto,
     val enablePixelShift: Boolean = true,
     val enableScreenSaverDuringPlayback: Boolean = true,
+    // 定时关闭
+    val sleepTimerDuration: SleepTimerDuration = SleepTimerDuration.Off,
+    val sleepTimerAction: SleepTimerAction = SleepTimerAction.PausePlayback,
+    val sleepTimerStopOnPause: Boolean = true,
     // 下载与存储
     val downloadDirectory: String = "",
     val lyricSaveMode: LyricSaveMode = LyricSaveMode.Embedded,
@@ -207,6 +241,9 @@ object AppSettingsManager {
     private const val KEY_COLOR_THEME = "color_theme"
     private const val KEY_CUSTOM_COLOR_HEX = "custom_color_hex"
     private const val KEY_AMOLED_DARK = "amoled_dark"
+    private const val KEY_SLEEP_TIMER_DURATION = "sleep_timer_duration"
+    private const val KEY_SLEEP_TIMER_ACTION = "sleep_timer_action"
+    private const val KEY_SLEEP_TIMER_STOP_ON_PAUSE = "sleep_timer_stop_on_pause"
 
     private var prefs: SharedPreferences? = null
     private var appContext: Context? = null
@@ -299,6 +336,12 @@ object AppSettingsManager {
         val customColorHex = p.getString(KEY_CUSTOM_COLOR_HEX, "#1A73E8") ?: "#1A73E8"
         val amoledDark = p.getBoolean(KEY_AMOLED_DARK, false)
 
+        val sleepTimerName = p.getString(KEY_SLEEP_TIMER_DURATION, SleepTimerDuration.Off.name) ?: SleepTimerDuration.Off.name
+        val sleepTimerDuration = runCatching { SleepTimerDuration.valueOf(sleepTimerName) }.getOrDefault(SleepTimerDuration.Off)
+        val sleepTimerActionName = p.getString(KEY_SLEEP_TIMER_ACTION, SleepTimerAction.PausePlayback.name) ?: SleepTimerAction.PausePlayback.name
+        val sleepTimerAction = runCatching { SleepTimerAction.valueOf(sleepTimerActionName) }.getOrDefault(SleepTimerAction.PausePlayback)
+        val sleepTimerStopOnPause = p.getBoolean(KEY_SLEEP_TIMER_STOP_ON_PAUSE, true)
+
         _settings.value =
             AppSettings(
                 preferredQualityTier = tier,
@@ -315,6 +358,9 @@ object AppSettingsManager {
                 screenSaverBrightness = brightness,
                 enablePixelShift = pixelShift,
                 enableScreenSaverDuringPlayback = duringPlayback,
+                sleepTimerDuration = sleepTimerDuration,
+                sleepTimerAction = sleepTimerAction,
+                sleepTimerStopOnPause = sleepTimerStopOnPause,
                 downloadDirectory = downloadDir,
                 lyricSaveMode = lyricSaveMode,
                 saveLyricTranslation = saveLyricTranslation,
@@ -480,6 +526,27 @@ object AppSettingsManager {
     }
 
     fun updateEnableScreenSaverDuringPlayback(enable: Boolean) = setEnableScreenSaverDuringPlayback(enable)
+
+    fun setSleepTimerDuration(duration: SleepTimerDuration) {
+        _settings.value = _settings.value.copy(sleepTimerDuration = duration)
+        prefs?.edit()?.putString(KEY_SLEEP_TIMER_DURATION, duration.name)?.apply()
+    }
+
+    fun updateSleepTimerDuration(duration: SleepTimerDuration) = setSleepTimerDuration(duration)
+
+    fun setSleepTimerAction(action: SleepTimerAction) {
+        _settings.value = _settings.value.copy(sleepTimerAction = action)
+        prefs?.edit()?.putString(KEY_SLEEP_TIMER_ACTION, action.name)?.apply()
+    }
+
+    fun updateSleepTimerAction(action: SleepTimerAction) = setSleepTimerAction(action)
+
+    fun setSleepTimerStopOnPause(enable: Boolean) {
+        _settings.value = _settings.value.copy(sleepTimerStopOnPause = enable)
+        prefs?.edit()?.putBoolean(KEY_SLEEP_TIMER_STOP_ON_PAUSE, enable)?.apply()
+    }
+
+    fun updateSleepTimerStopOnPause(enable: Boolean) = setSleepTimerStopOnPause(enable)
 
     fun setThemeMode(mode: ThemeMode) {
         _settings.value = _settings.value.copy(themeMode = mode)

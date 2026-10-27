@@ -37,6 +37,7 @@ import org.melodist.mobile.ui.settings.sections.SettingsAccountCard
 import org.melodist.mobile.ui.settings.sections.SettingsAppearanceSection
 import org.melodist.mobile.ui.settings.sections.SettingsCredentialsDialogs
 import org.melodist.mobile.ui.settings.sections.SettingsPlaybackSection
+import org.melodist.mobile.ui.settings.sections.SettingsSleepTimerSection
 import org.melodist.mobile.ui.settings.sections.SettingsStorageSection
 
 @Composable
@@ -110,6 +111,11 @@ fun MobileSettingsScreen(
                 // 外观与主题
                 item {
                     SettingsAppearanceSection(settings = settings)
+                }
+
+                // 定时关闭
+                item {
+                    SettingsSleepTimerSection(settings = settings)
                 }
 
                 // 播放、音质与歌词显示

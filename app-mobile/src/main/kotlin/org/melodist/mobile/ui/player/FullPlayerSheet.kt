@@ -54,6 +54,8 @@ import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Repeat
 import androidx.compose.material.icons.rounded.RepeatOne
 import androidx.compose.material.icons.rounded.Shuffle
+import androidx.compose.material.icons.rounded.Bedtime
+import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -704,6 +706,30 @@ fun FullPlayerSheet(
                                 modifier = Modifier.size(24.dp),
                             )
                         }
+                    }
+
+                    // 定时关闭（睡眠定时器）
+                    val sleepTimerState by org.melodist.data.SleepTimerManager.state.collectAsState()
+                    FilledTonalIconButton(
+                        onClick = { org.melodist.data.SleepTimerManager.toggle() },
+                        modifier = Modifier.size(48.dp),
+                        shape = auxButtonShape,
+                        colors =
+                            IconButtonDefaults.filledTonalIconButtonColors(
+                                containerColor = if (sleepTimerState.enabled) animatedAccentColor.copy(alpha = 0.20f) else auxButtonBgColor,
+                                contentColor = if (sleepTimerState.enabled) animatedAccentColor else contentPrimary.copy(alpha = 0.85f),
+                            ),
+                    ) {
+                        Icon(
+                            imageVector = if (sleepTimerState.enabled) Icons.Rounded.Timer else Icons.Rounded.Bedtime,
+                            contentDescription =
+                                if (sleepTimerState.enabled) {
+                                    "定时关闭剩余 ${org.melodist.data.SleepTimerManager.formatRemaining(sleepTimerState.remainingMillis)}"
+                                } else {
+                                    "定时关闭"
+                                },
+                            modifier = Modifier.size(24.dp),
+                        )
                     }
                 }
             }

@@ -34,6 +34,11 @@ class PlaybackService : MediaSessionService() {
 
     companion object {
         const val ACTION_TOGGLE_FAVORITE = "org.melodist.playback.ACTION_TOGGLE_FAVORITE"
+        const val ACTION_SLEEP_TIMER = "org.melodist.playback.ACTION_SLEEP_TIMER"
+        const val ACTION_SLEEP_TIMER_START = "org.melodist.playback.ACTION_SLEEP_TIMER_START"
+        const val ACTION_SLEEP_TIMER_CANCEL = "org.melodist.playback.ACTION_SLEEP_TIMER_CANCEL"
+        const val ACTION_SLEEP_TIMER_EXTEND = "org.melodist.playback.ACTION_SLEEP_TIMER_EXTEND"
+        const val EXTRA_SLEEP_TIMER_MINUTES = "org.melodist.playback.EXTRA_SLEEP_TIMER_MINUTES"
         const val EXTRA_START_FOREGROUND = "org.melodist.playback.EXTRA_START_FOREGROUND"
         const val CHANNEL_ID = "melodist_playback_channel_v3"
         const val NOTIFICATION_ID = 1001
@@ -49,6 +54,7 @@ class PlaybackService : MediaSessionService() {
                     MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS
                         .buildUpon()
                         .add(SessionCommand(ACTION_TOGGLE_FAVORITE, Bundle.EMPTY))
+                        .add(SessionCommand(ACTION_SLEEP_TIMER, Bundle.EMPTY))
                         .build()
                 val isFav = isCurrentSongFavorite()
 
@@ -57,7 +63,7 @@ class PlaybackService : MediaSessionService() {
                     MediaSession.ConnectionResult
                         .AcceptedResultBuilder(session)
                         .setAvailableSessionCommands(sessionCommands)
-                        .setCustomLayout(listOf(createFavoriteButton(isFav)))
+                        .setCustomLayout(createCustomLayout(isFav))
                         .build()
                 return result
             }
@@ -70,6 +76,12 @@ class PlaybackService : MediaSessionService() {
             ): ListenableFuture<SessionResult> {
                 if (customCommand.customAction == ACTION_TOGGLE_FAVORITE) {
                     PlaybackManager.toggleCurrentSongFavorite()
+                    return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+                }
+                if (customCommand.customAction == ACTION_SLEEP_TIMER) {
+                    val sleepTimer = org.melodist.data.SleepTimerManager
+                    if (sleepTimer.state.value.enabled) sleepTimer.cancel() else sleepTimer.start()
+                    refreshCustomLayout()
                     return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                 }
                 return super.onCustomCommand(session, controller, customCommand, args)
@@ -85,6 +97,8 @@ class PlaybackService : MediaSessionService() {
 
         val notificationProvider = MelodistNotificationProvider(this)
         setMediaNotificationProvider(notificationProvider)
+        org.melodist.data.SleepTimerManager.init()
+        registerSleepTimerReceiver()
 
         val player = PlaybackManager.getOrCreatePlayer(this)
         val forwarding = MelodistForwardingPlayer(player)
@@ -112,7 +126,7 @@ class PlaybackService : MediaSessionService() {
                 .setId("MelodistPlaybackSession")
                 .setSessionActivity(sessionActivity)
                 .setCallback(sessionCallback)
-                .setCustomLayout(listOf(createFavoriteButton(isFav)))
+                .setCustomLayout(createCustomLayout(isFav))
                 .build()
         mediaSession = session
         addSession(session)
@@ -121,7 +135,14 @@ class PlaybackService : MediaSessionService() {
             combine(PlaybackManager.currentSong, PlaybackManager.favoriteSongMids) { song, favs ->
                 song != null && favs.contains(song.songMid)
             }.distinctUntilChanged().collect { isFavState ->
-                mediaSession?.setCustomLayout(listOf(createFavoriteButton(isFavState)))
+                mediaSession?.setCustomLayout(createCustomLayout(isFavState))
+            }
+        }
+
+        // 定时关闭状态变化时同步通知栏按钮（剩余时间 / 关闭）
+        serviceScope.launch {
+            org.melodist.data.SleepTimerManager.state.collect {
+                mediaSession?.setCustomLayout(createCustomLayout(isCurrentSongFavorite()))
             }
         }
 
@@ -173,6 +194,54 @@ class PlaybackService : MediaSessionService() {
                 }
             }
         }
+    }
+
+    private val sleepTimerReceiver =
+        object : android.content.BroadcastReceiver() {
+            override fun onReceive(
+                context: android.content.Context,
+                intent: Intent,
+            ) {
+                when (intent.action) {
+                    ACTION_SLEEP_TIMER_START -> {
+                        val minutes = intent.getIntExtra(EXTRA_SLEEP_TIMER_MINUTES, 0)
+                        val duration = org.melodist.data.SleepTimerDuration.entries.firstOrNull { it.minutes == minutes }
+                        if (duration != null) {
+                            org.melodist.data.SleepTimerManager.start(duration)
+                        } else {
+                            org.melodist.data.SleepTimerManager.start()
+                        }
+                    }
+
+                    ACTION_SLEEP_TIMER_CANCEL -> org.melodist.data.SleepTimerManager.cancel()
+                    ACTION_SLEEP_TIMER_EXTEND -> org.melodist.data.SleepTimerManager.extend(intent.getIntExtra(EXTRA_SLEEP_TIMER_MINUTES, 10))
+                }
+                refreshCustomLayout()
+            }
+        }
+
+    private fun registerSleepTimerReceiver() {
+        val filter =
+            android.content.IntentFilter().apply {
+                addAction(ACTION_SLEEP_TIMER_START)
+                addAction(ACTION_SLEEP_TIMER_CANCEL)
+                addAction(ACTION_SLEEP_TIMER_EXTEND)
+            }
+        androidx.core.content.ContextCompat.registerReceiver(
+            this,
+            sleepTimerReceiver,
+            filter,
+            androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
+    }
+
+    override fun onDestroy() {
+        try {
+            unregisterReceiver(sleepTimerReceiver)
+        } catch (e: Exception) {
+            Log.w("PlaybackService", "Failed to unregister sleep timer receiver", e)
+        }
+        super.onDestroy()
     }
 
     override fun onStartCommand(
@@ -368,6 +437,37 @@ class PlaybackService : MediaSessionService() {
     private fun isCurrentSongFavorite(): Boolean {
         val song = PlaybackManager.currentSong.value ?: return false
         return PlaybackManager.favoriteSongMids.value.contains(song.songMid)
+    }
+
+    private fun createCustomLayout(isFavorite: Boolean): List<CommandButton> = listOf(createFavoriteButton(isFavorite), createSleepTimerButton())
+
+    private fun refreshCustomLayout() {
+        try {
+            mediaSession?.setCustomLayout(createCustomLayout(isCurrentSongFavorite()))
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            Log.w("PlaybackService", "Failed to refresh custom layout", e)
+        }
+    }
+
+    /**
+     * 定时关闭按钮：未启用时显示“定时关闭”，启用后显示剩余时间，点击即可取消。
+     */
+    private fun createSleepTimerButton(): CommandButton {
+        val state = org.melodist.data.SleepTimerManager.state.value
+        val displayName =
+            if (state.enabled) {
+                "定时 ${org.melodist.data.SleepTimerManager.formatRemaining(state.remainingMillis)}"
+            } else {
+                "定时关闭"
+            }
+        // 复用系统内置图标作为定时按钮图标（无专用图标时通过名称区分）
+        return CommandButton
+            .Builder(CommandButton.ICON_UNDEFINED)
+            .setSessionCommand(SessionCommand(ACTION_SLEEP_TIMER, Bundle.EMPTY))
+            .setDisplayName(displayName)
+            .setEnabled(true)
+            .build()
     }
 
     private fun createFavoriteButton(isFavorite: Boolean): CommandButton {
