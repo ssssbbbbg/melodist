@@ -235,15 +235,6 @@ class PlaybackService : MediaSessionService() {
         )
     }
 
-    override fun onDestroy() {
-        try {
-            unregisterReceiver(sleepTimerReceiver)
-        } catch (e: Exception) {
-            Log.w("PlaybackService", "Failed to unregister sleep timer receiver", e)
-        }
-        super.onDestroy()
-    }
-
     override fun onStartCommand(
         intent: Intent?,
         flags: Int,
@@ -332,6 +323,11 @@ class PlaybackService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        try {
+            unregisterReceiver(sleepTimerReceiver)
+        } catch (e: Exception) {
+            Log.w("PlaybackService", "Failed to unregister sleep timer receiver", e)
+        }
         PlaybackManager.legacyMetadataSyncCallback = null
         PlaybackManager.flushActivePlaybackSession()
         updateWakeLock(false)
