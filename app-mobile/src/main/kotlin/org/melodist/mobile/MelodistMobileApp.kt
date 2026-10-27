@@ -2,6 +2,7 @@ package org.melodist.mobile
 
 import android.app.Application
 import android.util.Log
+import kotlinx.coroutines.launch
 import coil3.ImageLoader
 import coil3.PlatformContext
 import coil3.SingletonImageLoader
@@ -150,7 +151,7 @@ class MelodistMobileApp :
     }
 
     private fun closeAllActivities(): Boolean {
-        val finished = activityRefs.finishAll()
+        val finished = finishAll()
         if (!finished) return false
         // 关闭界面后同时停掉播放服务，避免音乐在后台继续播放
         try {
