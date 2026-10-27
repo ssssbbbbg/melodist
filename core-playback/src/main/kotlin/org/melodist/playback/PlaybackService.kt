@@ -457,9 +457,10 @@ class PlaybackService : MediaSessionService() {
             } else {
                 "定时关闭"
             }
-        // 复用系统内置图标作为定时按钮图标（无专用图标时通过名称区分）
+        // 复用系统内置时钟类图标不可用，这里用“暂停”图标表示到点暂停播放
+        val icon = if (state.enabled) CommandButton.ICON_PAUSE else CommandButton.ICON_PLAY
         return CommandButton
-            .Builder(CommandButton.ICON_UNDEFINED)
+            .Builder(icon)
             .setSessionCommand(SessionCommand(ACTION_SLEEP_TIMER, Bundle.EMPTY))
             .setDisplayName(displayName)
             .setEnabled(true)

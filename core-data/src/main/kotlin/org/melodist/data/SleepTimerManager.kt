@@ -66,15 +66,8 @@ object SleepTimerManager {
 
         scope.launch {
             AppSettingsManager.settings.collect { settings ->
-                val action = settings.sleepTimerAction
-                if (settings.sleepTimerDuration == SleepTimerDuration.Off) {
-                    if (_state.value.enabled) cancel() else _state.value = _state.value.copy(action = action)
-                } else if (_state.value.enabled && _state.value.action != action) {
-                    // 仅同步播放行为偏好，不重置正在进行的倒计时
-                    _state.value = _state.value.copy(action = action)
-                } else if (!_state.value.enabled) {
-                    _state.value = _state.value.copy(action = action)
-                }
+                // 只同步“到点后行为”偏好，不重置正在进行的倒计时
+                _state.value = _state.value.copy(action = settings.sleepTimerAction)
             }
         }
 
@@ -184,7 +177,7 @@ object SleepTimerManager {
                         trigger()
                         return@launch
                     }
-                    delay(TICK_INTERVAL_MS.coerceAtMost(remaining))
+                    delay(if (remaining < TICK_INTERVAL_MS) remaining else TICK_INTERVAL_MS)
                 }
             }
     }
